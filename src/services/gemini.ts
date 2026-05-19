@@ -49,7 +49,7 @@ export async function translate(input: TranslateInput): Promise<string> {
     throw new GeminiError("GEMINI_API_KEY not configured on server", 500);
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const targetName = LANGUAGE_NAMES[input.target] || input.target;
   const prompt = buildPrompt(
     input.text,

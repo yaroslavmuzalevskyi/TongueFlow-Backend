@@ -26,7 +26,7 @@ app.use(
 // Rate limiting — protect against abuse (60 requests / minute per IP)
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, slow down" },
