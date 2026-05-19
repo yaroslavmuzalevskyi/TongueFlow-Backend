@@ -51,7 +51,7 @@ app.use("/", translateRouter);
 
 // ── Start ─────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`✓ TongueFlow backend listening on port ${PORT}`);
   if (!process.env.GEMINI_API_KEY) {
     console.warn("⚠️  GEMINI_API_KEY is NOT set — /translate will fail");
