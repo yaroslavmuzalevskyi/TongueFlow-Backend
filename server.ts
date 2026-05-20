@@ -7,6 +7,9 @@ import translateRouter from "./routes/translate.js";
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Railway / most PaaS sit behind a proxy that sets X-Forwarded-For.
+app.set("trust proxy", 1);
+
 // ── Middleware ────────────────────────────────────────────────────
 
 // JSON body parsing (keep limit low for translation API)

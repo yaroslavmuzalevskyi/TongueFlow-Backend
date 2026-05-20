@@ -49,7 +49,7 @@ export async function translate(input: TranslateInput): Promise<string> {
     throw new GeminiError("GEMINI_API_KEY not configured on server", 500);
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const targetName = LANGUAGE_NAMES[input.target] || input.target;
   const prompt = buildPrompt(
     input.text,
@@ -68,42 +68,57 @@ export async function translate(input: TranslateInput): Promise<string> {
     },
   };
 
-  // 15 second timeout
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Retry on transient 429/503 (Gemini "high demand") with backoff.
+  const maxAttempts = 3;
+  const retryDelaysMs = [600, 1500];
+  let response: Response | undefined;
+  let lastErrorText = "";
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err: any) {
-    clearTimeout(timeout);
-    if (err.name === "AbortError") {
-      throw new GeminiError("Translation timed out", 504);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      if (err.name === "AbortError") {
+        throw new GeminiError("Translation timed out", 504);
+      }
+      throw new GeminiError(`Network error: ${err.message}`, 502);
     }
-    throw new GeminiError(`Network error: ${err.message}`, 502);
-  }
-  clearTimeout(timeout);
+    clearTimeout(timeout);
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
+    if (response.ok) break;
+
+    const retriable = response.status === 503 || response.status === 429;
+    if (retriable && attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, retryDelaysMs[attempt - 1]));
+      continue;
+    }
+
+    lastErrorText = await response.text().catch(() => "");
     if (response.status === 400) {
       throw new GeminiError("Invalid request to Gemini", 502);
     }
     if (response.status === 429) {
       throw new GeminiError("Rate limited by Gemini", 429);
     }
+    if (response.status === 503) {
+      throw new GeminiError("Gemini temporarily unavailable", 503);
+    }
     throw new GeminiError(
-      `Gemini error ${response.status}: ${errorText.slice(0, 200)}`,
+      `Gemini error ${response.status}: ${lastErrorText.slice(0, 200)}`,
       502,
     );
   }
 
-  const data = (await response.json()) as any;
+  const data = (await response!.json()) as any;
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text || typeof text !== "string") {
     throw new GeminiError("Empty response from Gemini", 502);
